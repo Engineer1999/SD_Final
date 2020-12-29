@@ -36,6 +36,29 @@ global args
 args = parser.parse_args()
 SAVED_MODEL_NAME = 'pretrained/saved_model.uisrnn_benchmark'
 
+fs = 16000  # Sample rate
+seconds = 10  # Duration of recording
+# gpu configuration
+toolkits.initialize_GPU(args)
+params = {'dim': (257, None, 1),
+            'nfft': 512,
+            'spec_len': 250,
+            'win_length': 400,
+            'hop_length': 160,
+            'n_classes': 5994,
+            'sampling_rate': 16000,
+            'normalize': True,
+            }
+
+network_eval = spkModel.vggvox_resnet2d_icassp(input_dim=params['dim'],
+                                                   num_class=params['n_classes'],
+                                                   mode='eval', args=args)
+network_eval.load_weights(args.resume, by_name=True)
+model_args, _, inference_args = uisrnn.parse_arguments()
+model_args.observation_dim = 512
+uisrnnModel = uisrnn.UISRNN(model_args)
+uisrnnModel.load(SAVED_MODEL_NAME)
+
 def append2dict(speakerSlice, spk_period):
     key = list(spk_period.keys())[0]
     value = list(spk_period.values())[0]
@@ -124,7 +147,7 @@ def load_data(path, win_length=400, sr=16000, hop_length=160, n_fft=512, embeddi
     return utterances_spec, intervals
 
 
-def main(wav_path, embedding_per_second=1.0, overlap_rate=0.5):
+def speakerDiarization(wav_path, embedding_per_second=1.0, overlap_rate=0.5):
     global number_of_times_multiple_speaker_detected
     specs, intervals = load_data(wav_path, embedding_per_second=embedding_per_second, overlap_rate=overlap_rate)
     mapTable, keys = genMap(intervals)
@@ -181,30 +204,7 @@ def main(wav_path, embedding_per_second=1.0, overlap_rate=0.5):
     '''
     #p.plot.show()
 
-if __name__ == '__main__':
-    fs = 16000  # Sample rate
-    seconds = 10  # Duration of recording
-    # gpu configuration
-    toolkits.initialize_GPU(args)
-    params = {'dim': (257, None, 1),
-              'nfft': 512,
-              'spec_len': 250,
-              'win_length': 400,
-              'hop_length': 160,
-              'n_classes': 5994,
-              'sampling_rate': 16000,
-              'normalize': True,
-              }
-
-    network_eval = spkModel.vggvox_resnet2d_icassp(input_dim=params['dim'],
-                                                   num_class=params['n_classes'],
-                                                   mode='eval', args=args)
-    network_eval.load_weights(args.resume, by_name=True)
-
-    model_args, _, inference_args = uisrnn.parse_arguments()
-    model_args.observation_dim = 512
-    uisrnnModel = uisrnn.UISRNN(model_args)
-    uisrnnModel.load(SAVED_MODEL_NAME)
+def main():
     while(True):
         print("Start speaking")
         num = np.linspace(1, 12, 12)
@@ -213,7 +213,7 @@ if __name__ == '__main__':
             path = 'Custom_wav_file/test_' + str(int(i)) + '.wav'
             print(path)
             initial_time = datetime.now()
-            main(path, embedding_per_second=1.2, overlap_rate=0.4)
+            speakerDiarization(path, embedding_per_second=1.2, overlap_rate=0.4)
             print("time taken for execution is : " + str(datetime.now() - initial_time))   
         num = int(input("Enter 1 to continue and 0 to exit"))
         if num == 0:
@@ -221,3 +221,6 @@ if __name__ == '__main__':
         else:
             continue
 
+
+if __name__ == '__main__':
+    main()

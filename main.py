@@ -11,8 +11,10 @@ import sounddevice as sd
 from scipy.io.wavfile import write
 from viewer import PlotDiar
 from datetime import datetime, timedelta
-
 number_of_times_multiple_speaker_detected = 0
+import time
+
+
 # ===========================================
 #        Parse the argument
 # ===========================================
@@ -35,30 +37,29 @@ parser.add_argument('--test_type', default='normal', choices=['normal', 'hard', 
 global args
 args = parser.parse_args()
 SAVED_MODEL_NAME = 'pretrained/saved_model.uisrnn_benchmark'
-
 fs = 16000  # Sample rate
 seconds = 10  # Duration of recording
 # gpu configuration
 toolkits.initialize_GPU(args)
 params = {'dim': (257, None, 1),
-            'nfft': 512,
-            'spec_len': 250,
-            'win_length': 400,
-            'hop_length': 160,
-            'n_classes': 5994,
-            'sampling_rate': 16000,
-            'normalize': True,
-            }
-
+           'nfft': 512,
+           'spec_len': 250,
+           'win_length': 400,
+           'hop_length': 160,
+           'n_classes': 5994,
+           'sampling_rate': 16000,
+           'normalize': True,
+        }
 network_eval = spkModel.vggvox_resnet2d_icassp(input_dim=params['dim'],
-                                                   num_class=params['n_classes'],
-                                                   mode='eval', args=args)
+                                               num_class=params['n_classes'],
+                                               mode='eval', args=args)
 network_eval.load_weights(args.resume, by_name=True)
 model_args, _, inference_args = uisrnn.parse_arguments()
 model_args.observation_dim = 512
 uisrnnModel = uisrnn.UISRNN(model_args)
 uisrnnModel.load(SAVED_MODEL_NAME)
 
+#Create dictinory speaker uttering and duration
 def append2dict(speakerSlice, spk_period):
     key = list(spk_period.keys())[0]
     value = list(spk_period.values())[0]
@@ -71,6 +72,7 @@ def append2dict(speakerSlice, spk_period):
         speakerSlice[key] = [timeDict]
 
     return speakerSlice
+
 
 def arrangeResult(labels, time_spec_rate): # {'1': [{'start':10, 'stop':20}, {'start':30, 'stop':40}], '2': [{'start':90, 'stop':100}]}
     lastLabel = labels[0]
@@ -85,6 +87,7 @@ def arrangeResult(labels, time_spec_rate): # {'1': [{'start':10, 'stop':20}, {'s
     speakerSlice = append2dict(speakerSlice, {lastLabel: (time_spec_rate*j,time_spec_rate*(len(labels)))})
     return speakerSlice
 
+#generate map
 def genMap(intervals):  # interval slices to maptable
     slicelen = [sliced[1]-sliced[0] for sliced in intervals.tolist()]
     mapTable = {}  # vad erased time to origin time, only split points
@@ -98,6 +101,7 @@ def genMap(intervals):  # interval slices to maptable
     keys.sort()
     return mapTable, keys
 
+#Time formating
 def fmtTime(timeInMillisecond):
     millisecond = timeInMillisecond%1000
     minute = timeInMillisecond//1000//60
@@ -105,6 +109,7 @@ def fmtTime(timeInMillisecond):
     time = '{}:{:02d}.{}'.format(minute, second, millisecond)
     return time
 
+#Load wave file from the given path
 def load_wav(vid_path, sr):
     wav, _ = librosa.load(vid_path, sr=sr)
     intervals = librosa.effects.split(wav, top_db=20)
@@ -113,10 +118,12 @@ def load_wav(vid_path, sr):
       wav_output.extend(wav[sliced[0]:sliced[1]])
     return np.array(wav_output), (intervals/sr*1000).astype(int)
 
+#Short-time fourier transform
 def lin_spectogram_from_wav(wav, hop_length, win_length, n_fft=1024):
     linear = librosa.stft(wav, n_fft=n_fft, win_length=win_length, hop_length=hop_length) # linear spectrogram
     return linear.T
 
+#Load the data from specified path with given perameters
 def load_data(path, win_length=400, sr=16000, hop_length=160, n_fft=512, embedding_per_second=0.5, overlap_rate=0.5):
     wav, intervals = load_wav(path, sr=sr)
     linear_spect = lin_spectogram_from_wav(wav, hop_length, win_length, n_fft)
@@ -146,8 +153,8 @@ def load_data(path, win_length=400, sr=16000, hop_length=160, n_fft=512, embeddi
 
     return utterances_spec, intervals
 
-
-def speakerDiarization(wav_path, embedding_per_second=1.0, overlap_rate=0.5):
+#This function will analyze the given audio file for utterence and duration
+def speaker_diarization(wav_path, embedding_per_second=1.0, overlap_rate=0.5):
     global number_of_times_multiple_speaker_detected
     specs, intervals = load_data(wav_path, embedding_per_second=embedding_per_second, overlap_rate=overlap_rate)
     mapTable, keys = genMap(intervals)
@@ -204,23 +211,30 @@ def speakerDiarization(wav_path, embedding_per_second=1.0, overlap_rate=0.5):
     '''
     #p.plot.show()
 
+#main function
 def main():
+    n = 4
     while(True):
         print("Start speaking")
-        num = np.linspace(1, 12, 12)
+        num = np.linspace(0, n, n+1)
         print(num)
         for i in num:
-            path = 'Custom_wav_file/test_' + str(int(i)) + '.wav'
+            #time.sleep(22)
+            path = 'FLV/Stream/' + str(int(i)) + '.flv'
             print(path)
             initial_time = datetime.now()
-            speakerDiarization(path, embedding_per_second=1.2, overlap_rate=0.4)
-            print("time taken for execution is : " + str(datetime.now() - initial_time))   
+            speaker_diarization(path, embedding_per_second=1.2, overlap_rate=0.4)
+            print("time taken for execution is : " + str(datetime.now() - initial_time)) 
+            
         num = int(input("Enter 1 to continue and 0 to exit"))
         if num == 0:
             break
         else:
-            continue
+            continue    
 
 
 if __name__ == '__main__':
     main()
+
+
+
